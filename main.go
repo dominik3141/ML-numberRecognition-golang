@@ -26,6 +26,35 @@ func main() {
 	defer file.Close()
 
 	testFile := parseImageFile(file)
+	showPicture(testFile, 1)
+}
+
+func showPicture(archive TrainingSetImageFiles, fileNum int) {
+	if fileNum > int(archive.NumberOfImages) {
+		panic("fileNum is to high")
+	}
+
+	pixels := archive.Pixels
+	numOfPixels := int(archive.NumberOfRows * archive.NumberOfColumns)
+
+	decide := func(b byte) rune {
+		if b <= 256/2 {
+			return ' '
+		} else {
+			return 'x'
+		}
+	}
+
+	i := 0
+	for i < numOfPixels {
+		fmt.Printf("%c ", decide(pixels[i]))
+		if i%int(archive.NumberOfColumns) == 0 && i != 0 {
+			fmt.Printf("\n")
+		}
+
+		i++
+	}
+
 }
 
 func parseImageFile(file *os.File) TrainingSetImageFiles {
@@ -44,7 +73,7 @@ func parseImageFile(file *os.File) TrainingSetImageFiles {
 
 	n, err := file.Read(pixels)
 	check(err)
-	fmt.Printf("Read %v pixels from file", n)
+	fmt.Printf("Read %v pixels from file\n", n)
 
 	testFile.Pixels = pixels
 

@@ -20,15 +20,85 @@ type TrainingSetImageFiles struct {
 	Pixels          []byte // Pixels are organized row-wise. Pixel values are 0 to 255. 0 means background (white), 255 means foreground (black).
 }
 
+type LayerMap map[int](map[int]float64)
+
+type Network struct {
+	LMaps  [3]LayerMap
+	Biases [4]([]float64)
+}
+
+var numOfPixels int
+
+// don't forget the bias
+
 func main() {
 	file, err := os.Open("t10k-images.idx3-ubyte")
 	check(err)
 	defer file.Close()
 
 	testFile := parseImageFile(file)
-	for i := 0; i < 12; i++ {
-		showPicture(testFile, i*11)
+	numOfPixels = int(testFile.NumberOfRows * testFile.NumberOfColumns)
+
+	network := initNetwork()
+
+	ratings := guessDigit(getImage(testFile, 1), network)
+
+	fmt.Println(ratings)
+
+	// for i := 0; i < 12; i++ {
+	// 	showPicture(testFile, i*11)
+	// }
+}
+
+func guessDigit(image []byte, network Network) [10]float64 {
+	var layer1Nodes [16]float64
+	var layer2Nodes [16]float64
+	var layer3Nodes [10]float64
+
+	// layer0 -> layer1
+	for i := 0; i < 16; i++ {
+		for j := 0; i < numOfPixels; j++ {
+			layer1Nodes[i] += (network.LMaps[0])[j][i] * float64(image[j])
+		}
 	}
+
+	// layer1 -> layer2
+	for i := 0; i < 16; i++ {
+		for j := 0; i < 16; j++ {
+			layer2Nodes[i] += (network.LMaps[1])[j][i] * layer1Nodes[j]
+		}
+	}
+
+	// layer2 -> layer3
+	for i := 0; i < 10; i++ {
+		for j := 0; i < 16; j++ {
+			layer3Nodes[i] += (network.LMaps[2])[j][i] * layer2Nodes[j]
+		}
+	}
+
+	return layer3Nodes
+}
+
+func initNetwork() Network {
+	var network Network
+
+	network.LMaps[0] = make(LayerMap)
+	network.LMaps[1] = make(LayerMap)
+	network.LMaps[2] = make(LayerMap)
+
+	network.Biases[0] = make([]float64, 16)
+	network.Biases[1] = make([]float64, 16)
+	network.Biases[2] = make([]float64, 10)
+
+	return network
+}
+
+func getWeight(layerMap LayerMap, nodeL int, nodeR int) float64 {
+	return layerMap[nodeL][nodeR]
+}
+
+func getImage(archive TrainingSetImageFiles, fileNum int) []byte { // return the pixels of the specific image
+	return archive.Pixels[fileNum*numOfPixels : (fileNum+1)*numOfPixels]
 }
 
 func showPicture(archive TrainingSetImageFiles, fileNum int) {
@@ -36,8 +106,7 @@ func showPicture(archive TrainingSetImageFiles, fileNum int) {
 		panic("fileNum is to high")
 	}
 
-	numOfPixels := int(archive.NumberOfRows * archive.NumberOfColumns)
-	pixels := archive.Pixels[fileNum*numOfPixels : (fileNum+1)*numOfPixels]
+	image := getImage(archive, fileNum)
 
 	printByte := func(b byte) {
 		i := int((int(b) * 23 / 255)) + 232
@@ -52,7 +121,7 @@ func showPicture(archive TrainingSetImageFiles, fileNum int) {
 		if i%int(archive.NumberOfColumns) == 0 {
 			fmt.Printf("\n")
 		}
-		printByte(pixels[i])
+		printByte(image[i])
 
 		i++
 	}
@@ -70,8 +139,7 @@ func parseImageFile(file *os.File) TrainingSetImageFiles {
 	err = binary.Read(file, binary.BigEndian, &testFile.NumberOfColumns)
 	check(err)
 
-	numOfPixels := testFile.NumberOfImages * testFile.NumberOfRows * testFile.NumberOfColumns
-	pixels := make([]byte, numOfPixels)
+	pixels := make([]byte, int(testFile.NumberOfImages)*numOfPixels)
 
 	n, err := file.Read(pixels)
 	check(err)

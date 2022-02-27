@@ -27,7 +27,7 @@ func main() {
 
 	testFile := parseImageFile(file)
 	for i := 0; i < 12; i++ {
-		showPicture(testFile, i*10)
+		showPicture(testFile, i*11)
 	}
 }
 
@@ -49,11 +49,10 @@ func showPicture(archive TrainingSetImageFiles, fileNum int) {
 
 	i := 0
 	for i < numOfPixels {
-		// fmt.Printf("%c ", decide(pixels[i]))
-		printByte(pixels[i])
-		if i%int(archive.NumberOfColumns) == 0 && i != 0 {
+		if i%int(archive.NumberOfColumns) == 0 {
 			fmt.Printf("\n")
 		}
+		printByte(pixels[i])
 
 		i++
 	}

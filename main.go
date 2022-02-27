@@ -43,7 +43,8 @@ func main() {
 
 	ratings := guessDigit(getImage(testFile, 1), network)
 
-	fmt.Println(ratings)
+	// fmt.Println(ratings)
+	showResult(ratings)
 
 	// for i := 0; i < 12; i++ {
 	// 	showPicture(testFile, i*11)
@@ -172,6 +173,12 @@ func showPicture(archive TrainingSetImageFiles, fileNum int) {
 	fmt.Printf("\n")
 }
 
+func showResult(result [10]float64) {
+	for i := 0; i < 10; i++ {
+		fmt.Printf("Value for %v:\t %9.2f\n", i, result[i])
+	}
+}
+
 func parseImageFile(file *os.File) TrainingSetImageFiles {
 	var testFile TrainingSetImageFiles
 	err := binary.Read(file, binary.BigEndian, &testFile.MagicNumber)
@@ -185,7 +192,7 @@ func parseImageFile(file *os.File) TrainingSetImageFiles {
 
 	pixels := make([]byte, int(testFile.NumberOfImages)*numOfPixels)
 
-	n, err := file.Read(pixels)
+	_, err = file.Read(pixels)
 	check(err)
 	// fmt.Printf("Read %v pixels from file\n", n)
 

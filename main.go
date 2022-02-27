@@ -36,7 +36,10 @@ type Network struct {
 	Biases [4]([]float64)
 }
 
-const numOfPixels = 28 * 28
+const (
+	numOfPixels    = 28 * 28
+	learning_const = 0.1
+)
 
 // don't forget the bias
 
@@ -56,11 +59,14 @@ func main() {
 
 	imageNum := 1 // image 1 shows a '2'
 	result := calculateResult(getImage(testFile, imageNum), network)
-	fmt.Println(labelFile.Labels[imageNum])
 
 	for i := 0; i < 16; i++ {
-		grad := gradientForOutputNeurons(network, i, 6, int(labelFile.Labels[imageNum]), result)
+		grad := derivativeForOutputNeurons(network, i, 2, int(labelFile.Labels[imageNum]), result)
 		fmt.Printf("%v\n", grad)
+
+		// change weights according to derivative
+		fmt.Printf("Changing weights: %9.3f |-> %9.3f", network.LMaps[2][i][2], (network.LMaps[2][i][2] - learning_const*grad))
+		network.LMaps[2][i][2] += -learning_const * grad
 	}
 
 	// for i := 0; i < 12; i++ {
@@ -71,7 +77,25 @@ func main() {
 	// }
 }
 
-func gradientForOutputNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
+func derivativeForInnerNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
+	return result.NodesL2[i] * sigmaForInnerNeurons(network, i, j, label, result)
+}
+
+func derivativeForOutputNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
+	return result.NodesL2[i] * sigmaForOutputNeurons(network, i, j, label, result)
+}
+
+func sigmaForInnerNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
+	// first only for layer2 out of simplicity
+	var someSum float64
+	for _, weight_l := range network.LMaps[2][j] {
+		someSum += weight_l * sigmaForOutputNeurons(network, i, j, label, result)
+	}
+
+	return someSum * result.NodesL3[j] * (1 - result.NodesL3[j])
+}
+
+func sigmaForOutputNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
 	var indikLabel int
 	if label == j {
 		indikLabel = 1
@@ -79,7 +103,7 @@ func gradientForOutputNeurons(network Network, i int, j int, label int, result C
 		indikLabel = 0
 	}
 
-	return result.NodesL2[i] * ((result.NodesL3[j] - float64(indikLabel)) * result.NodesL3[j] * (1 - result.NodesL3[j]))
+	return ((result.NodesL3[j] - float64(indikLabel)) * result.NodesL3[j] * (1 - result.NodesL3[j]))
 }
 
 func calculateResult(image []byte, network Network) ComputedResult {

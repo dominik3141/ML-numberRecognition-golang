@@ -28,7 +28,7 @@ type Network struct {
 	Biases [4]([]float64)
 }
 
-var numOfPixels int
+const numOfPixels = 28 * 28
 
 // don't forget the bias
 
@@ -38,7 +38,6 @@ func main() {
 	defer file.Close()
 
 	testFile := parseImageFile(file)
-	numOfPixels = int(testFile.NumberOfRows * testFile.NumberOfColumns)
 
 	network := initNetwork()
 
@@ -58,21 +57,21 @@ func guessDigit(image []byte, network Network) [10]float64 {
 
 	// layer0 -> layer1
 	for i := 0; i < 16; i++ {
-		for j := 0; i < numOfPixels; j++ {
+		for j := 0; j < numOfPixels; j++ {
 			layer1Nodes[i] += (network.LMaps[0])[j][i] * float64(image[j])
 		}
 	}
 
 	// layer1 -> layer2
 	for i := 0; i < 16; i++ {
-		for j := 0; i < 16; j++ {
+		for j := 0; j < 16; j++ {
 			layer2Nodes[i] += (network.LMaps[1])[j][i] * layer1Nodes[j]
 		}
 	}
 
 	// layer2 -> layer3
 	for i := 0; i < 10; i++ {
-		for j := 0; i < 16; j++ {
+		for j := 0; j < 16; j++ {
 			layer3Nodes[i] += (network.LMaps[2])[j][i] * layer2Nodes[j]
 		}
 	}
@@ -85,8 +84,19 @@ func initNetwork() Network {
 	var network Network
 
 	network.LMaps[0] = make(LayerMap)
+	for i := 0; i < numOfPixels; i++ {
+		network.LMaps[0][i] = make(map[int]float64, 0)
+	}
+
 	network.LMaps[1] = make(LayerMap)
+	for i := 0; i < 16; i++ {
+		network.LMaps[1][i] = make(map[int]float64, 0)
+	}
+
 	network.LMaps[2] = make(LayerMap)
+	for i := 0; i < 16; i++ {
+		network.LMaps[2][i] = make(map[int]float64, 0)
+	}
 
 	network.Biases[0] = make([]float64, numOfPixels)
 	network.Biases[1] = make([]float64, 16)
@@ -177,7 +187,7 @@ func parseImageFile(file *os.File) TrainingSetImageFiles {
 
 	n, err := file.Read(pixels)
 	check(err)
-	fmt.Printf("Read %v pixels from file\n", n)
+	// fmt.Printf("Read %v pixels from file\n", n)
 
 	testFile.Pixels = pixels
 

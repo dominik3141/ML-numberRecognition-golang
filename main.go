@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 )
@@ -33,22 +34,25 @@ const numOfPixels = 28 * 28
 // don't forget the bias
 
 func main() {
-	file, err := os.Open("t10k-images.idx3-ubyte")
+	fileTestData, err := os.Open("t10k-images.idx3-ubyte")
 	check(err)
-	defer file.Close()
+	defer fileTestData.Close()
 
-	testFile := parseImageFile(file)
+	fileTestDataLabels, err := os.Open("t10k-labels.idx1-ubyte")
+	check(err)
+	defer fileTestDataLabels.Close()
+
+	testFile := parseImageFile(fileTestData)
+	labelFile := parseLabelFile(fileTestDataLabels)
 
 	network := initNetwork()
 
-	ratings := guessDigit(getImage(testFile, 1), network)
-
-	// fmt.Println(ratings)
-	showResult(ratings)
-
-	// for i := 0; i < 12; i++ {
-	// 	showPicture(testFile, i*11)
-	// }
+	for i := 0; i < 12; i++ {
+		showPicture(testFile, i*11)
+		ratings := guessDigit(getImage(testFile, i), network)
+		showResult(ratings)
+		fmt.Printf("cost: %v\n", cost(ratings, int(labelFile.Labels[i])))
+	}
 }
 
 func guessDigit(image []byte, network Network) [10]float64 {
@@ -59,8 +63,11 @@ func guessDigit(image []byte, network Network) [10]float64 {
 	// layer0 -> layer1
 	for i := 0; i < 16; i++ {
 		for j := 0; j < numOfPixels; j++ {
-			layer1Nodes[i] += (network.LMaps[0])[j][i] * float64(image[j])
+			// layer1Nodes[i] += (network.LMaps[0])[j][i] * float64(image[j])
+			layer1Nodes[i] += (network.LMaps[0])[j][i] * (float64(int(image[j])) / 255)
 		}
+		// fmt.Printf("%v |-> %v\n", layer1Nodes[i], sigmoid(layer1Nodes[i]))
+		layer1Nodes[i] = sigmoid(layer1Nodes[i] - network.Biases[0][i])
 	}
 
 	// layer1 -> layer2
@@ -68,6 +75,7 @@ func guessDigit(image []byte, network Network) [10]float64 {
 		for j := 0; j < 16; j++ {
 			layer2Nodes[i] += (network.LMaps[1])[j][i] * layer1Nodes[j]
 		}
+		layer2Nodes[i] = sigmoid(layer2Nodes[i] - network.Biases[1][i])
 	}
 
 	// layer2 -> layer3
@@ -75,13 +83,28 @@ func guessDigit(image []byte, network Network) [10]float64 {
 		for j := 0; j < 16; j++ {
 			layer3Nodes[i] += (network.LMaps[2])[j][i] * layer2Nodes[j]
 		}
+		layer3Nodes[i] = sigmoid(layer3Nodes[i] - network.Biases[2][i])
 	}
 
 	return layer3Nodes
 }
 
-// initialize the maps between layers randomly
+func cost(result [10]float64, label int) float64 {
+	var costVal float64
+	for i := 0; i < 10; i++ {
+		if i == label {
+			costVal += math.Pow((result[i] - 1), 2)
+		} else {
+			costVal += math.Pow((result[i] - 0), 2)
+		}
+	}
+
+	return costVal
+}
+
 func initNetwork() Network {
+	// initialize the maps between layers randomly
+	// initialize all biases to zero
 	var network Network
 
 	network.LMaps[0] = make(LayerMap)
@@ -99,9 +122,9 @@ func initNetwork() Network {
 		network.LMaps[2][i] = make(map[int]float64, 0)
 	}
 
-	network.Biases[0] = make([]float64, numOfPixels)
+	network.Biases[0] = make([]float64, 16)
 	network.Biases[1] = make([]float64, 16)
-	network.Biases[2] = make([]float64, 16)
+	network.Biases[2] = make([]float64, 10)
 
 	// lMap0
 	for i := 0; i < numOfPixels; i++ {
@@ -125,18 +148,21 @@ func initNetwork() Network {
 	}
 
 	// bias0
-	for i := 0; i < numOfPixels; i++ {
-		network.Biases[0][i] = float64(0)
+	for i := 0; i < 16; i++ {
+		// network.Biases[0][i] = float64(10)
+		network.Biases[0][i] = rand.Float64()
 	}
 
 	// bias1
 	for i := 0; i < 16; i++ {
-		network.Biases[1][i] = float64(0)
+		// network.Biases[1][i] = float64(10)
+		network.Biases[1][i] = rand.Float64()
 	}
 
 	// bias2
-	for i := 0; i < 16; i++ {
-		network.Biases[2][i] = float64(0)
+	for i := 0; i < 10; i++ {
+		// network.Biases[2][i] = float64(0)
+		network.Biases[2][i] = rand.Float64()
 	}
 
 	return network
@@ -175,7 +201,7 @@ func showPicture(archive TrainingSetImageFiles, fileNum int) {
 
 func showResult(result [10]float64) {
 	for i := 0; i < 10; i++ {
-		fmt.Printf("Value for %v:\t %9.2f\n", i, result[i])
+		fmt.Printf("Value for %v:\t %9.3f\n", i, result[i])
 	}
 }
 
@@ -194,11 +220,30 @@ func parseImageFile(file *os.File) TrainingSetImageFiles {
 
 	_, err = file.Read(pixels)
 	check(err)
-	// fmt.Printf("Read %v pixels from file\n", n)
 
 	testFile.Pixels = pixels
 
 	return testFile
+}
+
+func parseLabelFile(file *os.File) TrainingSetLabelFiles {
+	var labelFile TrainingSetLabelFiles
+	err := binary.Read(file, binary.BigEndian, &labelFile.MagicNumber)
+	check(err)
+	err = binary.Read(file, binary.BigEndian, &labelFile.NumberOfItems)
+	check(err)
+
+	labels := make([]byte, labelFile.NumberOfItems)
+	_, err = file.Read(labels)
+	check(err)
+
+	labelFile.Labels = labels
+
+	return labelFile
+}
+
+func sigmoid(x float64) float64 {
+	return 1 / (1 + math.Exp(x*(-1)))
 }
 
 func check(err error) {

@@ -24,6 +24,13 @@ type TrainingSetImageFiles struct {
 
 type LayerMap map[int](map[int]float64)
 
+type ComputedResult struct {
+	NodesL0 [numOfPixels]float64 // pixels
+	NodesL1 [16]float64
+	NodesL2 [16]float64
+	NodesL3 [10]float64 // results
+}
+
 type Network struct {
 	LMaps  [3]LayerMap
 	Biases [4]([]float64)
@@ -47,46 +54,62 @@ func main() {
 
 	network := initNetwork()
 
-	for i := 0; i < 12; i++ {
-		showPicture(testFile, i*11)
-		ratings := guessDigit(getImage(testFile, i), network)
-		showResult(ratings)
-		fmt.Printf("cost: %v\n", cost(ratings, int(labelFile.Labels[i])))
+	imageNum := 1 // image 1 shows a '2'
+	result := calculateResult(getImage(testFile, imageNum), network)
+	fmt.Println(labelFile.Labels[imageNum])
+
+	for i := 0; i < 16; i++ {
+		grad := gradientForOutputNeurons(network, i, 6, int(labelFile.Labels[imageNum]), result)
+		fmt.Printf("%v\n", grad)
 	}
+
+	// for i := 0; i < 12; i++ {
+	// 	showPicture(testFile, i*11)
+	// 	ratings := calculateResult(getImage(testFile, i), network)
+	// 	showResult(ratings)
+	// 	fmt.Printf("cost: %v\n", cost(ratings, int(labelFile.Labels[i])))
+	// }
 }
 
-func guessDigit(image []byte, network Network) [10]float64 {
-	var layer1Nodes [16]float64
-	var layer2Nodes [16]float64
-	var layer3Nodes [10]float64
+func gradientForOutputNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
+	var indikLabel int
+	if label == j {
+		indikLabel = 1
+	} else {
+		indikLabel = 0
+	}
+
+	return result.NodesL2[i] * ((result.NodesL3[j] - float64(indikLabel)) * result.NodesL3[j] * (1 - result.NodesL3[j]))
+}
+
+func calculateResult(image []byte, network Network) ComputedResult {
+	var results ComputedResult
 
 	// layer0 -> layer1
 	for i := 0; i < 16; i++ {
 		for j := 0; j < numOfPixels; j++ {
-			// layer1Nodes[i] += (network.LMaps[0])[j][i] * float64(image[j])
-			layer1Nodes[i] += (network.LMaps[0])[j][i] * (float64(int(image[j])) / 255)
+			results.NodesL1[i] += (network.LMaps[0])[j][i] * (float64(int(image[j])) / 255)
 		}
-		// fmt.Printf("%v |-> %v\n", layer1Nodes[i], sigmoid(layer1Nodes[i]))
-		layer1Nodes[i] = sigmoid(layer1Nodes[i] - network.Biases[0][i])
+		results.NodesL1[i] = sigmoid(results.NodesL1[i] - network.Biases[0][i])
 	}
 
 	// layer1 -> layer2
 	for i := 0; i < 16; i++ {
 		for j := 0; j < 16; j++ {
-			layer2Nodes[i] += (network.LMaps[1])[j][i] * layer1Nodes[j]
+			results.NodesL2[i] += (network.LMaps[1])[j][i] * results.NodesL1[j]
 		}
-		layer2Nodes[i] = sigmoid(layer2Nodes[i] - network.Biases[1][i])
+		results.NodesL2[i] = sigmoid(results.NodesL2[i] - network.Biases[1][i])
 	}
 
 	// layer2 -> layer3
 	for i := 0; i < 10; i++ {
 		for j := 0; j < 16; j++ {
-			layer3Nodes[i] += (network.LMaps[2])[j][i] * layer2Nodes[j]
+			results.NodesL3[i] += (network.LMaps[2])[j][i] * results.NodesL2[j]
 		}
-		layer3Nodes[i] = sigmoid(layer3Nodes[i] - network.Biases[2][i])
+		results.NodesL3[i] = sigmoid(results.NodesL3[i] - network.Biases[2][i])
 	}
 
-	return layer3Nodes
+	return results
 }
 
 func cost(result [10]float64, label int) float64 {

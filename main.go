@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"math/rand"
 	"os"
 )
 
@@ -79,6 +80,7 @@ func guessDigit(image []byte, network Network) [10]float64 {
 	return layer3Nodes
 }
 
+// initialize the maps between layers randomly
 func initNetwork() Network {
 	var network Network
 
@@ -86,15 +88,47 @@ func initNetwork() Network {
 	network.LMaps[1] = make(LayerMap)
 	network.LMaps[2] = make(LayerMap)
 
-	network.Biases[0] = make([]float64, 16)
+	network.Biases[0] = make([]float64, numOfPixels)
 	network.Biases[1] = make([]float64, 16)
-	network.Biases[2] = make([]float64, 10)
+	network.Biases[2] = make([]float64, 16)
+
+	// lMap0
+	for i := 0; i < numOfPixels; i++ {
+		for j := 0; j < 16; j++ {
+			(network.LMaps[0])[i][j] = rand.Float64()
+		}
+	}
+
+	// lMap1
+	for i := 0; i < 16; i++ {
+		for j := 0; j < 16; j++ {
+			(network.LMaps[1])[i][j] = rand.Float64()
+		}
+	}
+
+	// lMap2
+	for i := 0; i < 16; i++ {
+		for j := 0; j < 10; j++ {
+			(network.LMaps[2])[i][j] = rand.Float64()
+		}
+	}
+
+	// bias0
+	for i := 0; i < numOfPixels; i++ {
+		network.Biases[0][i] = float64(0)
+	}
+
+	// bias1
+	for i := 0; i < 16; i++ {
+		network.Biases[1][i] = float64(0)
+	}
+
+	// bias2
+	for i := 0; i < 16; i++ {
+		network.Biases[2][i] = float64(0)
+	}
 
 	return network
-}
-
-func getWeight(layerMap LayerMap, nodeL int, nodeR int) float64 {
-	return layerMap[nodeL][nodeR]
 }
 
 func getImage(archive TrainingSetImageFiles, fileNum int) []byte { // return the pixels of the specific image

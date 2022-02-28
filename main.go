@@ -98,6 +98,9 @@ func learn(network Network, result ComputedResult, deltas map[int](map[int]float
 
 func calcAllDeltas(network Network, result ComputedResult, label int) map[int](map[int]float64) {
 	deltas := make(map[int](map[int]float64)) // deltas[layer][nrOfNode]
+	for j := 0; j < 4; j++ {
+		deltas[j] = make(map[int]float64)
+	}
 
 	indik := func(label int, j int) int {
 		if label == j {

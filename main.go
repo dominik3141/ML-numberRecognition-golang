@@ -57,16 +57,11 @@ func main() {
 
 	network := initNetwork()
 
-	imageNum := 1 // image 1 shows a '2'
-	result := calculateResult(getImage(testFile, imageNum), network)
-
-	for i := 0; i < 16; i++ {
-		grad := derivativeForOutputNeurons(network, i, 2, int(labelFile.Labels[imageNum]), result)
-		fmt.Printf("%v\n", grad)
-
-		// change weights according to derivative
-		fmt.Printf("Changing weights: %9.3f |-> %9.3f", network.LMaps[2][i][2], (network.LMaps[2][i][2] - learning_const*grad))
-		network.LMaps[2][i][2] += -learning_const * grad
+	for imageNum := 0; imageNum < 10; imageNum++ { // image 1 shows a '2'
+		result := calculateResult(getImage(testFile, imageNum), network)
+		fmt.Println(cost(result.NodesL3, int(labelFile.Labels[imageNum])))
+		deltas := calcAllDeltas(network, result, int(labelFile.Labels[imageNum]))
+		learn(network, result, deltas)
 	}
 
 	// for i := 0; i < 12; i++ {
@@ -77,34 +72,157 @@ func main() {
 	// }
 }
 
-func derivativeForInnerNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
-	return result.NodesL2[i] * sigmaForInnerNeurons(network, i, j, label, result)
-}
-
-func derivativeForOutputNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
-	return result.NodesL2[i] * sigmaForOutputNeurons(network, i, j, label, result)
-}
-
-func sigmaForInnerNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
-	// first only for layer2 out of simplicity
-	var someSum float64
-	for _, weight_l := range network.LMaps[2][j] {
-		someSum += weight_l * sigmaForOutputNeurons(network, i, j, label, result)
+func learn(network Network, result ComputedResult, deltas map[int](map[int]float64)) {
+	// lmap2
+	for i := 0; i < 16; i++ {
+		for j := 0; j < 10; j++ {
+			network.LMaps[2][i][j] += (-1) * learning_const * result.NodesL2[i] * deltas[3][j]
+		}
 	}
 
-	return someSum * result.NodesL3[j] * (1 - result.NodesL3[j])
-}
-
-func sigmaForOutputNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
-	var indikLabel int
-	if label == j {
-		indikLabel = 1
-	} else {
-		indikLabel = 0
+	// lmap1
+	for i := 0; i < 16; i++ {
+		for j := 0; j < 16; j++ {
+			network.LMaps[1][i][j] += (-1) * learning_const * result.NodesL1[i] * deltas[2][j]
+		}
 	}
 
-	return ((result.NodesL3[j] - float64(indikLabel)) * result.NodesL3[j] * (1 - result.NodesL3[j]))
+	// lmap0
+	for i := 0; i < numOfPixels; i++ {
+		for j := 0; j < 16; j++ {
+			network.LMaps[0][i][j] += (-1) * learning_const * result.NodesL0[i] * deltas[1][j]
+		}
+	}
+
 }
+
+func calcAllDeltas(network Network, result ComputedResult, label int) map[int](map[int]float64) {
+	deltas := make(map[int](map[int]float64)) // deltas[layer][nrOfNode]
+
+	indik := func(label int, j int) int {
+		if label == j {
+			return 1
+		} else {
+			return 0
+		}
+	}
+
+	for layer := 3; layer >= 0; layer += -1 {
+		switch layer {
+		case 3: // outputLayer
+			for neuron := 0; neuron < 10; neuron++ {
+				sigma := ((result.NodesL3[neuron] - float64(indik(label, neuron))) * result.NodesL3[neuron] * (1 - result.NodesL3[neuron]))
+				deltas[3][neuron] = sigma
+			}
+
+		case 2:
+			for neuronL := 0; neuronL < 16; neuronL++ {
+				var someSum float64
+				for neuronR := 0; neuronR < 10; neuronR++ {
+					someSum += network.LMaps[2][neuronL][neuronR] * deltas[3][neuronR]
+				}
+
+				sigma := someSum * result.NodesL2[neuronL] * (1 - result.NodesL2[neuronL])
+				deltas[2][neuronL] = sigma
+			}
+
+		case 1:
+			for neuronL := 0; neuronL < 16; neuronL++ {
+				var someSum float64
+				for neuronR := 0; neuronR < 16; neuronR++ {
+					someSum += network.LMaps[1][neuronL][neuronR] * deltas[2][neuronR]
+				}
+
+				sigma := someSum * result.NodesL1[neuronL] * (1 - result.NodesL1[neuronL])
+				deltas[1][neuronL] = sigma
+			}
+
+		case 0:
+			for neuronL := 0; neuronL < numOfPixels; neuronL++ {
+				var someSum float64
+				for neuronR := 0; neuronR < 16; neuronR++ {
+					someSum += network.LMaps[0][neuronL][neuronR] * deltas[1][neuronR]
+				}
+
+				sigma := someSum * result.NodesL0[neuronL] * (1 - result.NodesL0[neuronL])
+				deltas[0][neuronL] = sigma
+			}
+
+		default:
+			panic("Invalid layer nr.")
+		}
+
+	}
+
+	return deltas
+}
+
+// func derivate(network Network, neuronL int, neuronR int, layer int, result ComputedResult, label int) float64 {
+// 	indik := func(label int, j int) int {
+// 		if label == j {
+// 			return 1
+// 		} else {
+// 			return 0
+// 		}
+// 	}
+
+// 	switch layer {
+// 	case 3: // outputLayer
+// 		sigma := ((result.NodesL3[neuronR] - float64(indik(label, neuronR))) * result.NodesL3[neuronR] * (1 - result.NodesL3[neuronR]))
+// 		return result.NodesL2[neuronL] * sigma
+
+// 	case 2:
+// 		var someSum float64
+// 		for _, weight_l := range network.LMaps[2][neuronR] {
+// 			someSum += weight_l * sigmaForOutputNeurons(network, neuronL, neuronR, label, result)
+// 		}
+
+// 		sigma := someSum * result.NodesL3[neuronR] * (1 - result.NodesL3[neuronR])
+// 		return result.NodesL2[neuronL] * sigma
+
+// 	case 1:
+// 		var someSum float64
+// 		for _, weight_l := range network.LMaps[1][neuronR] {
+// 			someSum += weight_l * sigmaForOutputNeurons(network, neuronL, neuronR, label, result)
+// 		}
+
+// 		sigma := someSum * result.NodesL2[neuronR] * (1 - result.NodesL2[neuronR])
+// 		return result.NodesL1[neuronL] * sigma
+
+// 	default:
+// 		panic("Invalid layer nr.")
+// 	}
+
+// }
+
+// func derivativeForInnerNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
+// 	return result.NodesL2[i] * sigmaForInnerNeurons(network, i, j, label, result)
+// }
+
+// func derivativeForOutputNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
+// 	return result.NodesL2[i] * sigmaForOutputNeurons(network, i, j, label, result)
+// }
+
+// func sigmaForInnerNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
+// 	// first only for layer2 out of simplicity
+// 	var someSum float64
+// 	for _, weight_l := range network.LMaps[2][j] {
+// 		someSum += weight_l * sigmaForOutputNeurons(network, i, j, label, result)
+// 	}
+
+// 	return someSum * result.NodesL3[j] * (1 - result.NodesL3[j])
+// }
+
+// func sigmaForOutputNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
+// 	var indikLabel int
+// 	if label == j {
+// 		indikLabel = 1
+// 	} else {
+// 		indikLabel = 0
+// 	}
+
+// 	return ((result.NodesL3[j] - float64(indikLabel)) * result.NodesL3[j] * (1 - result.NodesL3[j]))
+// }
 
 func calculateResult(image []byte, network Network) ComputedResult {
 	var results ComputedResult

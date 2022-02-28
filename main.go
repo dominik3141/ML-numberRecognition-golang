@@ -44,32 +44,26 @@ const (
 // don't forget the bias
 
 func main() {
-	fileTestData, err := os.Open("t10k-images.idx3-ubyte")
+	fileTrainingData, err := os.Open("train-images.idx3-ubyte") // contains 60000 pictures
 	check(err)
-	defer fileTestData.Close()
+	defer fileTrainingData.Close()
 
-	fileTestDataLabels, err := os.Open("t10k-labels.idx1-ubyte")
+	fileTrainingDataLabels, err := os.Open("train-labels.idx1-ubyte")
 	check(err)
-	defer fileTestDataLabels.Close()
+	defer fileTrainingDataLabels.Close()
 
-	testFile := parseImageFile(fileTestData)
-	labelFile := parseLabelFile(fileTestDataLabels)
+	trainingFile := parseImageFile(fileTrainingData)
+	TraininglabelFile := parseLabelFile(fileTrainingDataLabels)
 
 	network := initNetwork()
 
 	for imageNum := 0; imageNum < 10; imageNum++ { // image 1 shows a '2'
-		result := calculateResult(getImage(testFile, imageNum), network)
-		fmt.Println(cost(result.NodesL3, int(labelFile.Labels[imageNum])))
-		deltas := calcAllDeltas(network, result, int(labelFile.Labels[imageNum]))
+		label := int(TraininglabelFile.Labels[imageNum])
+		result := calculateResult(getImage(trainingFile, imageNum), network)
+		fmt.Println(cost(result.NodesL3, label))
+		deltas := calcAllDeltas(network, result, label)
 		learn(network, result, deltas)
 	}
-
-	// for i := 0; i < 12; i++ {
-	// 	showPicture(testFile, i*11)
-	// 	ratings := calculateResult(getImage(testFile, i), network)
-	// 	showResult(ratings)
-	// 	fmt.Printf("cost: %v\n", cost(ratings, int(labelFile.Labels[i])))
-	// }
 }
 
 func learn(network Network, result ComputedResult, deltas map[int](map[int]float64)) {
@@ -159,73 +153,6 @@ func calcAllDeltas(network Network, result ComputedResult, label int) map[int](m
 
 	return deltas
 }
-
-// func derivate(network Network, neuronL int, neuronR int, layer int, result ComputedResult, label int) float64 {
-// 	indik := func(label int, j int) int {
-// 		if label == j {
-// 			return 1
-// 		} else {
-// 			return 0
-// 		}
-// 	}
-
-// 	switch layer {
-// 	case 3: // outputLayer
-// 		sigma := ((result.NodesL3[neuronR] - float64(indik(label, neuronR))) * result.NodesL3[neuronR] * (1 - result.NodesL3[neuronR]))
-// 		return result.NodesL2[neuronL] * sigma
-
-// 	case 2:
-// 		var someSum float64
-// 		for _, weight_l := range network.LMaps[2][neuronR] {
-// 			someSum += weight_l * sigmaForOutputNeurons(network, neuronL, neuronR, label, result)
-// 		}
-
-// 		sigma := someSum * result.NodesL3[neuronR] * (1 - result.NodesL3[neuronR])
-// 		return result.NodesL2[neuronL] * sigma
-
-// 	case 1:
-// 		var someSum float64
-// 		for _, weight_l := range network.LMaps[1][neuronR] {
-// 			someSum += weight_l * sigmaForOutputNeurons(network, neuronL, neuronR, label, result)
-// 		}
-
-// 		sigma := someSum * result.NodesL2[neuronR] * (1 - result.NodesL2[neuronR])
-// 		return result.NodesL1[neuronL] * sigma
-
-// 	default:
-// 		panic("Invalid layer nr.")
-// 	}
-
-// }
-
-// func derivativeForInnerNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
-// 	return result.NodesL2[i] * sigmaForInnerNeurons(network, i, j, label, result)
-// }
-
-// func derivativeForOutputNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
-// 	return result.NodesL2[i] * sigmaForOutputNeurons(network, i, j, label, result)
-// }
-
-// func sigmaForInnerNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
-// 	// first only for layer2 out of simplicity
-// 	var someSum float64
-// 	for _, weight_l := range network.LMaps[2][j] {
-// 		someSum += weight_l * sigmaForOutputNeurons(network, i, j, label, result)
-// 	}
-
-// 	return someSum * result.NodesL3[j] * (1 - result.NodesL3[j])
-// }
-
-// func sigmaForOutputNeurons(network Network, i int, j int, label int, result ComputedResult) float64 {
-// 	var indikLabel int
-// 	if label == j {
-// 		indikLabel = 1
-// 	} else {
-// 		indikLabel = 0
-// 	}
-
-// 	return ((result.NodesL3[j] - float64(indikLabel)) * result.NodesL3[j] * (1 - result.NodesL3[j]))
-// }
 
 func calculateResult(image []byte, network Network) ComputedResult {
 	var results ComputedResult

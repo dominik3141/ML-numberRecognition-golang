@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/gob"
 	"fmt"
 	"math"
 	"math/rand"
@@ -56,7 +57,7 @@ func main() {
 	network := initNetwork()
 	avgError := float64(0)
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 1; i++ {
 		for imageNum := 0; imageNum < 60000; imageNum++ { // image 1 shows a '2'
 			label := int(TraininglabelFile.Labels[imageNum])
 			result := calculateResult(getImage(trainingFile, imageNum), network)
@@ -77,6 +78,33 @@ func main() {
 			}
 		}
 	}
+
+	saveNetwork(network)
+}
+
+func loadNetwork(filename string) Network {
+	file, err := os.Open(filename)
+	check(err)
+	defer file.Close()
+
+	decoder := gob.NewDecoder(file)
+
+	var network Network
+	err = decoder.Decode(network)
+	check(err)
+
+	return network
+}
+
+func saveNetwork(network Network) {
+	file, err := os.Create("network1.gob")
+	check(err)
+	defer file.Close()
+
+	encoder := gob.NewEncoder(file)
+
+	err = encoder.Encode(network)
+	check(err)
 }
 
 func addToAvg(sampleSize int, currentAvg float64, newVal float64) float64 {

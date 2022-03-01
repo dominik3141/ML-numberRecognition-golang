@@ -36,9 +36,15 @@ type Network struct {
 	Biases [4]([]float64)
 }
 
+type ShortTermMemory struct {
+	SampleSize int
+	LMaps      [3]LayerMap
+	Biases     [4]([]float64)
+}
+
 const (
 	numOfPixels    = 28 * 28
-	learning_const = 0.1
+	learning_const = 0.02
 )
 
 // don't forget the bias
@@ -56,43 +62,168 @@ func main() {
 	TraininglabelFile := parseLabelFile(fileTrainingDataLabels)
 
 	network := initNetwork()
+	stm := initShortTermMemory(network)
 
-	for imageNum := 0; imageNum < 10; imageNum++ { // image 1 shows a '2'
+	costs := make([]float64, 0, 10000)
+	for imageNum := 3; imageNum < 6000; imageNum++ { // image 1 shows a '2'
 		label := int(TraininglabelFile.Labels[imageNum])
 		result := calculateResult(getImage(trainingFile, imageNum), network)
-		fmt.Println(cost(result.NodesL3, label))
-		deltas := calcAllDeltas(network, result, label)
-		learn(network, result, deltas)
+		costs = append(costs, cost(result.NodesL3, label))
+
+		deltas := calcAllDeltas(network, &result, label)
+		learnStm(&stm, &result, deltas)
+
+		if imageNum%11 == 0 {
+			learn(network, stm)
+			stm = initShortTermMemory(network)
+		}
+
+		if imageNum%101 == 0 {
+			showPicture(trainingFile, imageNum)
+			fmt.Println("imageNum:", imageNum)
+			showResult(result.NodesL3)
+			fmt.Println("Label:", label)
+		}
+	}
+
+	// costsFile, err := os.Create("costs.csv")
+	// check(err)
+	// defer costsFile.Close()
+	for i := 0; i < 6000; i++ {
+		if i%90 == 0 {
+			// fmt.Fprintf(costsFile, "%f\n", costs[i])
+			fmt.Printf("%f\n", costs[i])
+		}
 	}
 }
 
-func learn(network Network, result ComputedResult, deltas map[int](map[int]float64)) {
+func addToAvg(sampleSize int, currentAvg float64, newVal float64) float64 {
+	ret := (float64(sampleSize)*currentAvg + newVal) / float64(sampleSize+1)
+	// fmt.Printf("addToAvg(%v,%v,%v) -> %v\n", sampleSize, currentAvg, newVal, ret)
+	return ret
+}
+
+func initShortTermMemory(network Network) ShortTermMemory {
+	var stm ShortTermMemory
+
+	stm.SampleSize = 0
+
+	stm.LMaps[0] = make(LayerMap)
+	for i := 0; i < numOfPixels; i++ {
+		stm.LMaps[0][i] = make(map[int]float64, 0)
+	}
+
+	stm.LMaps[1] = make(LayerMap)
+	for i := 0; i < 16; i++ {
+		stm.LMaps[1][i] = make(map[int]float64, 0)
+	}
+
+	stm.LMaps[2] = make(LayerMap)
+	for i := 0; i < 16; i++ {
+		stm.LMaps[2][i] = make(map[int]float64, 0)
+	}
+
+	stm.Biases[0] = make([]float64, 16)
+	stm.Biases[1] = make([]float64, 16)
+	stm.Biases[2] = make([]float64, 10)
+
+	// // lMap0
+	// for i := 0; i < numOfPixels; i++ {
+	// 	for j := 0; j < 16; j++ {
+	// 		(stm.LMaps[0])[i][j] = rand.Float64()
+	// 	}
+	// }
+
+	// // lMap1
+	// for i := 0; i < 16; i++ {
+	// 	for j := 0; j < 16; j++ {
+	// 		(stm.LMaps[1])[i][j] = rand.Float64()
+	// 	}
+	// }
+
+	// // lMap2
+	// for i := 0; i < 16; i++ {
+	// 	for j := 0; j < 10; j++ {
+	// 		(stm.LMaps[2])[i][j] = rand.Float64()
+	// 	}
+	// }
+
+	// bias0
+	for i := 0; i < 16; i++ {
+		stm.Biases[0][i] = float64(0.5)
+		// stm.Biases[0][i] = rand.Float64()
+	}
+
+	// bias1
+	for i := 0; i < 16; i++ {
+		stm.Biases[1][i] = float64(0.5)
+		// stm.Biases[1][i] = rand.Float64()
+	}
+
+	// bias2
+	for i := 0; i < 10; i++ {
+		stm.Biases[2][i] = float64(0.5)
+		// stm.Biases[2][i] = rand.Float64()
+	}
+
+	return stm
+}
+
+func learn(network Network, stm ShortTermMemory) {
 	// lmap2
 	for i := 0; i < 16; i++ {
 		for j := 0; j < 10; j++ {
-			network.LMaps[2][i][j] += (-1) * learning_const * result.NodesL2[i] * deltas[3][j]
+			network.LMaps[2][i][j] += (1) * learning_const * stm.LMaps[2][i][j]
 		}
 	}
 
 	// lmap1
 	for i := 0; i < 16; i++ {
 		for j := 0; j < 16; j++ {
-			network.LMaps[1][i][j] += (-1) * learning_const * result.NodesL1[i] * deltas[2][j]
+			network.LMaps[1][i][j] += (1) * learning_const * stm.LMaps[1][i][j]
 		}
 	}
 
 	// lmap0
 	for i := 0; i < numOfPixels; i++ {
 		for j := 0; j < 16; j++ {
-			network.LMaps[0][i][j] += (-1) * learning_const * result.NodesL0[i] * deltas[1][j]
+			network.LMaps[0][i][j] += (1) * learning_const * stm.LMaps[0][i][j]
+		}
+	}
+}
+
+func learnStm(stm *ShortTermMemory, result *ComputedResult, deltas map[int](map[int]float64)) {
+	var currDelta float64
+	// lmap2
+	for i := 0; i < 16; i++ {
+		for j := 0; j < 10; j++ {
+			currDelta = (-1) * result.NodesL2[i] * deltas[3][j]
+			stm.LMaps[2][i][j] = addToAvg(stm.SampleSize, stm.LMaps[2][i][j], currDelta)
 		}
 	}
 
+	// lmap1
+	for i := 0; i < 16; i++ {
+		for j := 0; j < 16; j++ {
+			currDelta = (-1) * result.NodesL1[i] * deltas[2][j]
+			stm.LMaps[1][i][j] = addToAvg(stm.SampleSize, stm.LMaps[1][i][j], currDelta)
+		}
+	}
+
+	// lmap0
+	for i := 0; i < numOfPixels; i++ {
+		for j := 0; j < 16; j++ {
+			currDelta = (-1) * result.NodesL0[i] * deltas[1][j]
+			stm.LMaps[0][i][j] = addToAvg(stm.SampleSize, stm.LMaps[0][i][j], currDelta)
+		}
+	}
+
+	stm.SampleSize = stm.SampleSize + 1
 }
 
-func calcAllDeltas(network Network, result ComputedResult, label int) map[int](map[int]float64) {
+func calcAllDeltas(network Network, result *ComputedResult, label int) map[int](map[int]float64) {
 	deltas := make(map[int](map[int]float64)) // deltas[layer][nrOfNode]
-	for j := 0; j < 4; j++ {
+	for j := 1; j < 4; j++ {
 		deltas[j] = make(map[int]float64)
 	}
 
@@ -104,7 +235,7 @@ func calcAllDeltas(network Network, result ComputedResult, label int) map[int](m
 		}
 	}
 
-	for layer := 3; layer >= 0; layer += -1 {
+	for layer := 3; layer > 0; layer += -1 {
 		switch layer {
 		case 3: // outputLayer
 			for neuron := 0; neuron < 10; neuron++ {
@@ -115,6 +246,7 @@ func calcAllDeltas(network Network, result ComputedResult, label int) map[int](m
 		case 2:
 			for neuronL := 0; neuronL < 16; neuronL++ {
 				var someSum float64
+				someSum = 0
 				for neuronR := 0; neuronR < 10; neuronR++ {
 					someSum += network.LMaps[2][neuronL][neuronR] * deltas[3][neuronR]
 				}
@@ -126,6 +258,7 @@ func calcAllDeltas(network Network, result ComputedResult, label int) map[int](m
 		case 1:
 			for neuronL := 0; neuronL < 16; neuronL++ {
 				var someSum float64
+				someSum = 0
 				for neuronR := 0; neuronR < 16; neuronR++ {
 					someSum += network.LMaps[1][neuronL][neuronR] * deltas[2][neuronR]
 				}
@@ -134,16 +267,16 @@ func calcAllDeltas(network Network, result ComputedResult, label int) map[int](m
 				deltas[1][neuronL] = sigma
 			}
 
-		case 0:
-			for neuronL := 0; neuronL < numOfPixels; neuronL++ {
-				var someSum float64
-				for neuronR := 0; neuronR < 16; neuronR++ {
-					someSum += network.LMaps[0][neuronL][neuronR] * deltas[1][neuronR]
-				}
+		// case 0:
+		// 	for neuronL := 0; neuronL < numOfPixels; neuronL++ {
+		// 		var someSum float64
+		// 		for neuronR := 0; neuronR < 16; neuronR++ {
+		// 			someSum += network.LMaps[0][neuronL][neuronR] * deltas[1][neuronR]
+		// 		}
 
-				sigma := someSum * result.NodesL0[neuronL] * (1 - result.NodesL0[neuronL])
-				deltas[0][neuronL] = sigma
-			}
+		// 		sigma := someSum * result.NodesL0[neuronL] * (1 - result.NodesL0[neuronL])
+		// 		deltas[0][neuronL] = sigma
+		// 	}
 
 		default:
 			panic("Invalid layer nr.")
@@ -157,28 +290,35 @@ func calcAllDeltas(network Network, result ComputedResult, label int) map[int](m
 func calculateResult(image []byte, network Network) ComputedResult {
 	var results ComputedResult
 
+	for i := 0; i < numOfPixels; i++ {
+		results.NodesL0[i] = float64(image[i]) / 255
+	}
+
 	// layer0 -> layer1
 	for i := 0; i < 16; i++ {
+		var sum float64
 		for j := 0; j < numOfPixels; j++ {
-			results.NodesL1[i] += (network.LMaps[0])[j][i] * (float64(int(image[j])) / 255)
+			sum += (network.LMaps[0])[j][i] * results.NodesL0[j]
 		}
-		results.NodesL1[i] = sigmoid(results.NodesL1[i] - network.Biases[0][i])
+		results.NodesL1[i] = sigmoid(sum - network.Biases[0][i])
 	}
 
 	// layer1 -> layer2
 	for i := 0; i < 16; i++ {
+		var sum float64
 		for j := 0; j < 16; j++ {
-			results.NodesL2[i] += (network.LMaps[1])[j][i] * results.NodesL1[j]
+			sum += (network.LMaps[1])[j][i] * results.NodesL1[j]
 		}
-		results.NodesL2[i] = sigmoid(results.NodesL2[i] - network.Biases[1][i])
+		results.NodesL2[i] = sigmoid(sum - network.Biases[1][i])
 	}
 
 	// layer2 -> layer3
 	for i := 0; i < 10; i++ {
+		var sum float64
 		for j := 0; j < 16; j++ {
-			results.NodesL3[i] += (network.LMaps[2])[j][i] * results.NodesL2[j]
+			sum += (network.LMaps[2])[j][i] * results.NodesL2[j]
 		}
-		results.NodesL3[i] = sigmoid(results.NodesL3[i] - network.Biases[2][i])
+		results.NodesL3[i] = sigmoid(sum - network.Biases[2][i])
 	}
 
 	return results
@@ -194,6 +334,7 @@ func cost(result [10]float64, label int) float64 {
 		}
 	}
 
+	// return sigmoid(costVal)
 	return costVal
 }
 
@@ -204,17 +345,17 @@ func initNetwork() Network {
 
 	network.LMaps[0] = make(LayerMap)
 	for i := 0; i < numOfPixels; i++ {
-		network.LMaps[0][i] = make(map[int]float64, 0)
+		network.LMaps[0][i] = make(map[int]float64)
 	}
 
 	network.LMaps[1] = make(LayerMap)
 	for i := 0; i < 16; i++ {
-		network.LMaps[1][i] = make(map[int]float64, 0)
+		network.LMaps[1][i] = make(map[int]float64)
 	}
 
 	network.LMaps[2] = make(LayerMap)
 	for i := 0; i < 16; i++ {
-		network.LMaps[2][i] = make(map[int]float64, 0)
+		network.LMaps[2][i] = make(map[int]float64)
 	}
 
 	network.Biases[0] = make([]float64, 16)
@@ -244,20 +385,20 @@ func initNetwork() Network {
 
 	// bias0
 	for i := 0; i < 16; i++ {
-		// network.Biases[0][i] = float64(10)
-		network.Biases[0][i] = rand.Float64()
+		network.Biases[0][i] = float64(32)
+		// network.Biases[0][i] = rand.Float64()
 	}
 
 	// bias1
 	for i := 0; i < 16; i++ {
-		// network.Biases[1][i] = float64(10)
-		network.Biases[1][i] = rand.Float64()
+		network.Biases[1][i] = float64(2)
+		// network.Biases[1][i] = rand.Float64()
 	}
 
 	// bias2
 	for i := 0; i < 10; i++ {
-		// network.Biases[2][i] = float64(0)
-		network.Biases[2][i] = rand.Float64()
+		network.Biases[2][i] = float64(0.5)
+		// network.Biases[2][i] = rand.Float64()
 	}
 
 	return network

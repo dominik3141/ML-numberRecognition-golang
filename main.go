@@ -9,13 +9,13 @@ import (
 	"os"
 )
 
-type TrainingSetLabelFiles struct {
+type TrainingLabelFiles struct {
 	MagicNumber   int32
 	NumberOfItems int32
 	Labels        []byte // The labels values are 0 to 9.
 }
 
-type TrainingSetImageFiles struct {
+type TrainingImageFiles struct {
 	MagicNumber     int32
 	NumberOfImages  int32
 	NumberOfRows    int32
@@ -52,37 +52,47 @@ func main() {
 	defer fileTrainingDataLabels.Close()
 
 	trainingFile := parseImageFile(fileTrainingData)
-	TraininglabelFile := parseLabelFile(fileTrainingDataLabels)
+	// TraininglabelFile := parseLabelFile(fileTrainingDataLabels)
 
-	network := initNetwork()
-	avgError := float64(0)
+	network := loadNetwork("network1.gob")
 
-	for i := 0; i < 1; i++ {
-		for imageNum := 0; imageNum < 60000; imageNum++ { // image 1 shows a '2'
-			label := int(TraininglabelFile.Labels[imageNum])
-			result := calculateResult(getImage(trainingFile, imageNum), network)
+	fileNum := 782
+	result := calculateResult(getImage(trainingFile, fileNum), network)
 
-			avgError = addToAvg(imageNum%11, avgError, cost(result.NodesL3, label))
+	showPicture(trainingFile, fileNum)
+	showResult(result.NodesL3)
 
-			deltas := calcAllDeltas(network, &result, label)
-			learn(network, result, deltas)
+	// network := initNetwork()
 
-			if imageNum%2000-5 == 0 {
-				fmt.Println("avgError:", avgError)
-				avgError = 0
+	// trainNetwork(&network, trainingFile, TraininglabelFile)
 
-				showPicture(trainingFile, imageNum)
-				fmt.Println("imageNum:", imageNum)
-				showResult(result.NodesL3)
-				fmt.Println("Label:", label)
-			}
-		}
-	}
-
-	saveNetwork(network)
+	// saveNetwork(&network)
 }
 
-func loadNetwork(filename string) Network {
+func trainNetwork(network *Network, trainingFile TrainingImageFiles, trainingLabels TrainingLabelFiles) {
+	avgError := float64(0)
+	for imageNum := 0; imageNum < 60000; imageNum++ { // image 1 shows a '2'
+		label := int(trainingLabels.Labels[imageNum])
+		result := calculateResult(getImage(trainingFile, imageNum), network)
+
+		avgError = addToAvg(imageNum%11, avgError, cost(result.NodesL3, label))
+
+		deltas := calcAllDeltas(network, &result, label)
+		learn(network, result, deltas)
+
+		if imageNum%2000-5 == 0 {
+			fmt.Println("avgError:", avgError)
+			avgError = 0
+
+			showPicture(trainingFile, imageNum)
+			fmt.Println("imageNum:", imageNum)
+			showResult(result.NodesL3)
+			fmt.Println("Label:", label)
+		}
+	}
+}
+
+func loadNetwork(filename string) *Network {
 	file, err := os.Open(filename)
 	check(err)
 	defer file.Close()
@@ -90,13 +100,13 @@ func loadNetwork(filename string) Network {
 	decoder := gob.NewDecoder(file)
 
 	var network Network
-	err = decoder.Decode(network)
+	err = decoder.Decode(&network)
 	check(err)
 
-	return network
+	return &network
 }
 
-func saveNetwork(network Network) {
+func saveNetwork(network *Network) {
 	file, err := os.Create("network1.gob")
 	check(err)
 	defer file.Close()
@@ -112,7 +122,7 @@ func addToAvg(sampleSize int, currentAvg float64, newVal float64) float64 {
 	return ret
 }
 
-func learn(network Network, result ComputedResult, deltas map[int](map[int]float64)) {
+func learn(network *Network, result ComputedResult, deltas map[int](map[int]float64)) {
 	var currChange float64
 	// lmap2
 	for i := 0; i < 16; i++ {
@@ -156,7 +166,7 @@ func learn(network Network, result ComputedResult, deltas map[int](map[int]float
 	}
 }
 
-func calcAllDeltas(network Network, result *ComputedResult, label int) map[int](map[int]float64) {
+func calcAllDeltas(network *Network, result *ComputedResult, label int) map[int](map[int]float64) {
 	deltas := make(map[int](map[int]float64)) // deltas[layer][nrOfNode]
 	for j := 1; j < 4; j++ {
 		deltas[j] = make(map[int]float64)
@@ -222,7 +232,7 @@ func calcAllDeltas(network Network, result *ComputedResult, label int) map[int](
 	return deltas
 }
 
-func calculateResult(image []byte, network Network) ComputedResult {
+func calculateResult(image []byte, network *Network) ComputedResult {
 	var results ComputedResult
 
 	for i := 0; i < numOfPixels; i++ {
@@ -339,11 +349,11 @@ func initNetwork() Network {
 	return network
 }
 
-func getImage(archive TrainingSetImageFiles, fileNum int) []byte { // return the pixels of the specific image
+func getImage(archive TrainingImageFiles, fileNum int) []byte { // return the pixels of the specific image
 	return archive.Pixels[fileNum*numOfPixels : (fileNum+1)*numOfPixels]
 }
 
-func showPicture(archive TrainingSetImageFiles, fileNum int) {
+func showPicture(archive TrainingImageFiles, fileNum int) {
 	if fileNum > int(archive.NumberOfImages) {
 		panic("fileNum is to high")
 	}
@@ -376,8 +386,8 @@ func showResult(result [10]float64) {
 	}
 }
 
-func parseImageFile(file *os.File) TrainingSetImageFiles {
-	var testFile TrainingSetImageFiles
+func parseImageFile(file *os.File) TrainingImageFiles {
+	var testFile TrainingImageFiles
 	err := binary.Read(file, binary.BigEndian, &testFile.MagicNumber)
 	check(err)
 	err = binary.Read(file, binary.BigEndian, &testFile.NumberOfImages)
@@ -397,8 +407,8 @@ func parseImageFile(file *os.File) TrainingSetImageFiles {
 	return testFile
 }
 
-func parseLabelFile(file *os.File) TrainingSetLabelFiles {
-	var labelFile TrainingSetLabelFiles
+func parseLabelFile(file *os.File) TrainingLabelFiles {
+	var labelFile TrainingLabelFiles
 	err := binary.Read(file, binary.BigEndian, &labelFile.MagicNumber)
 	check(err)
 	err = binary.Read(file, binary.BigEndian, &labelFile.NumberOfItems)

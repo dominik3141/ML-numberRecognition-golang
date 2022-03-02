@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"time"
 )
 
 type TrainingLabelFiles struct {
@@ -56,7 +57,8 @@ func main() {
 
 	network := loadNetwork("network1.gob")
 
-	fileNum := 782
+	rand.Seed(time.Now().Unix())
+	fileNum := rand.Intn(59999)
 	result := calculateResult(getImage(trainingFile, fileNum), network)
 
 	showPicture(trainingFile, fileNum)
